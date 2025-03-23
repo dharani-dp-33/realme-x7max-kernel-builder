@@ -1,0 +1,56 @@
+name: Stock Kernel Builder
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Stock Kernel
+        uses: actions/checkout@v4
+        with:
+          repository: <YOUR_GITHUB_USERNAME>/realme_X7max_GTneo_GTneo2T-AndroidT-kernel-source
+          path: kernel-source
+
+      - name: Checkout MemKernel
+        uses: actions/checkout@v4
+        with:
+          repository: <YOUR_GITHUB_USERNAME>/MemKernel
+          path: mem-module
+
+      - name: Setup Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu build-essential libssl-dev flex bison
+
+      - name: Patch Kernel Source
+        run: |
+          # Apply critical fixes from custom kernel reference
+          cp -r mem-module/drivers/memk kernel-source/drivers/
+          sed -i 's/CONFIG_MODULE_SIG=y/# CONFIG_MODULE_SIG is not set/' kernel-source/arch/arm64/configs/k6891v1_64_k419_defconfig
+          echo 'CONFIG_MODULE_FORCE_LOAD=y' >> kernel-source/arch/arm64/configs/k6891v1_64_k419_defconfig
+
+      - name: Build Kernel
+        run: |
+          cd kernel-source
+          export ARCH=arm64
+          make O=out k6891v1_64_k419_defconfig
+          make -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu-
+
+      - name: Build Memory Module
+        run: |
+          cd mem-module
+          KERNEL_SRC=../kernel-source/out make
+
+      - name: Package Artifacts
+        run: |
+          mkdir artifacts
+          cp kernel-source/out/arch/arm64/boot/Image.gz-dtb artifacts/
+          cp mem-module/*.ko artifacts/
+          zip -r stock-kernel-package.zip artifacts
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stock-kernel-modules
+          path: stock-kernel-package.zip
